@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+
+  <input type="text" id="amount" placeholder="please enter lovelace with a n at the end">
+
+  <button id="lock">lock ada</button>
+  <p id="msg"></p>
+  
+  <script type="module">
+
+    const lockfund=document.getElementById("lock");
+import {
+    Blockfrost,
+    C,
+    Constr,
+    Data,
+    Lucid,
+    fromHex,
+    toHex,
+    
+  }  from "https://unpkg.com/lucid-cardano/web/mod.js";
+  import * as cbor from "https://deno.land/x/cbor@v1.4.1/index.js";
+   
+  const lucid = await Lucid.new(
+    new Blockfrost(
+        "https://cardano-preprod.blockfrost.io/api/v0",
+        "preprodGAZEMdUuCiAHUwvEDEArXvns7bXu3rpX"
+    ),
+    "Preprod"
+);
+
+
+const api = await window.cardano.nami.enable();
+lucid.selectWallet(api);
+
+
+const validator = await readValidator();
+
+// --- Supporting functions
+
+async function readValidator() {
+  const validatorData = await fetchValidatorData();
+  const validator = JSON.parse(validatorData).validators[0];
+  return {
+    type: "PlutusV2",
+    script: toHex(cbor.encode(fromHex(validator.compiledCode))),
+  };
+}
+
+async function fetchValidatorData() {
+  const response = await fetch("plutus.json");
+  return await response.text();
+}
+
+
+
+
+//a0f9b08554db3815f2ce77afa0a63a2f24bd13d5a6bd0fe5a7c526ce83479ec5
+const amount=document.getElementById("amount");
+const msg=document.getElementById("msg");
+
+async function lock1() {
+  const lovelaceInput = amount.value.trim();
+
+  // Validate if lovelaceInput is a valid integer
+  if (!lovelaceInput || isNaN(lovelaceInput)) {
+    msg.innerHTML = "Please enter a valid amount in lovelace.";
+    return;
+  }
+
+  // Parse lovelaceInput to an integer
+  const lovelace = parseInt(lovelaceInput, 10);
+//"addr_test1qrxsmclskne7duajhxvm8u35msekr4ylcna5a4kk67zcfnxdruy99dlhgt9sgp05686ts7n2cqx53s7xvtrhcjnq56lq57rjye"
+  const publicKeyHash = 
+  lucid.utils.getAddressDetails(await lucid.wallet.address()).paymentCredential?.hash;
+
+  const datum = Data.to(new Constr(0, [publicKeyHash]));
+
+  try {
+    const txHash = await lock(lovelace, { into: validator, owner: datum });
+    await lucid.awaitTx(txHash);
+    console.log(`1 tADA locked into the contract at:
+      Tx ID: ${txHash}
+      Datum: ${datum}
+      `);
+  } catch (error) {
+    console.error("Error locking ADA:", error);
+    msg.innerHTML = "Error locking ADA. Please try again.";
+  }
+}
+
+// --- Supporting functions
+
+async function lock(lovelace,{ into, owner }) {
+  const contractAddress = lucid.utils.validatorToAddress(into);
+
+  const tx = await lucid
+    .newTx()
+    .payToContract(contractAddress, { inline: owner }, { lovelace })
+   
+    .complete();
+
+  const signedTx = await tx.sign().complete();
+  return signedTx.submit();
+
+}
+
+lockfund.onclick=lock1;
+
+  </script>
+</body>
+</html>
+
